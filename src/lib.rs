@@ -1,5 +1,5 @@
 use std::{
-    sync::{mpsc, Arc, Mutex}, 
+    sync::{mpsc::{self}, Arc, Mutex}, 
     thread,
 };
 
@@ -43,6 +43,7 @@ impl ThreadPool {
 /// Adding a request to the thread
 /// 
 /// Accepts closure as input 
+
 impl ThreadPool {
     pub fn execute<F>(&self, f: F)
     where
@@ -50,7 +51,16 @@ impl ThreadPool {
         {
             let job = Box::new(f);
 
-            self.sender.as_ref().unwrap().send(job).unwrap();
+            //self.sender.as_ref().unwrap().send(job).unwrap();
+
+            match self.sender.as_ref() {
+                Some(sender) =>  {
+                    if let Err(_e) = sender.send(job) {
+                        println!("Error while sending threads from threadpool");
+                    }
+                },
+                None => println!("Error while receving threads from threadpool"),
+            }
         }
 }
 
@@ -63,7 +73,9 @@ impl Drop for ThreadPool {
             println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                if let Err(_e) = thread.join() {
+                    println!("Error while shutting down thread");
+                }
             }
         }
     }
@@ -77,7 +89,15 @@ struct Worker {
 impl Worker {
     pub fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         let thread = thread::spawn(move|| loop {
-            let message = receiver.lock().unwrap().recv();
+            //let message = receiver.lock().unwrap().recv();
+
+            let message = match receiver.lock() {
+                Ok(receiver) => receiver.recv(),
+                Err(_) => {
+                    println!("Error while receiving new Worker Thread");
+                    break;
+                },
+            };
 
             match message {
                 Ok(job) => {
